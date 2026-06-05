@@ -1,0 +1,619 @@
+"""Start Menu sederhana yang digambar manual dengan WinAPI dan GDI."""
+
+import ctypes
+from ctypes import wintypes
+
+
+# ---------------------------------------------------------------------------
+# Load DLL Windows
+# ---------------------------------------------------------------------------
+
+user32 = ctypes.WinDLL("user32", use_last_error=True)
+gdi32 = ctypes.WinDLL("gdi32", use_last_error=True)
+kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+
+# ---------------------------------------------------------------------------
+# Konstanta Windows
+# ---------------------------------------------------------------------------
+
+WM_DESTROY = 0x0002
+WM_PAINT = 0x000F
+WM_ERASEBKGND = 0x0014
+WM_MOUSEMOVE = 0x0200
+WM_LBUTTONDOWN = 0x0201
+
+CS_VREDRAW = 0x0001
+CS_HREDRAW = 0x0002
+
+WS_OVERLAPPEDWINDOW = 0x00CF0000
+WS_VISIBLE = 0x10000000
+
+SW_SHOW = 5
+COLOR_WINDOW = 5
+CW_USEDEFAULT = ctypes.c_int(0x80000000).value
+
+IDC_ARROW = 32512
+TRANSPARENT = 1
+NULL_PEN = 8
+DEFAULT_GUI_FONT = 17
+
+MB_OK = 0x00000000
+MB_ICONINFORMATION = 0x00000040
+
+
+# ---------------------------------------------------------------------------
+# Fallback tipe data ctypes/wintypes untuk kompatibilitas Windows 64-bit
+# ---------------------------------------------------------------------------
+
+BOOL = getattr(wintypes, "BOOL", ctypes.c_int)
+BYTE = getattr(wintypes, "BYTE", ctypes.c_ubyte)
+WORD = getattr(wintypes, "WORD", ctypes.c_ushort)
+UINT = getattr(wintypes, "UINT", ctypes.c_uint)
+DWORD = getattr(wintypes, "DWORD", ctypes.c_ulong)
+INT = getattr(wintypes, "INT", ctypes.c_int)
+LONG = getattr(wintypes, "LONG", ctypes.c_long)
+
+HANDLE = getattr(wintypes, "HANDLE", ctypes.c_void_p)
+HWND = getattr(wintypes, "HWND", ctypes.c_void_p)
+HINSTANCE = getattr(wintypes, "HINSTANCE", ctypes.c_void_p)
+HMODULE = getattr(wintypes, "HMODULE", HINSTANCE)
+HICON = getattr(wintypes, "HICON", ctypes.c_void_p)
+HCURSOR = getattr(wintypes, "HCURSOR", ctypes.c_void_p)
+HBRUSH = getattr(wintypes, "HBRUSH", ctypes.c_void_p)
+HDC = getattr(wintypes, "HDC", ctypes.c_void_p)
+HMENU = getattr(wintypes, "HMENU", ctypes.c_void_p)
+HGDIOBJ = getattr(wintypes, "HGDIOBJ", ctypes.c_void_p)
+
+WPARAM = getattr(wintypes, "WPARAM", ctypes.c_size_t)
+LPARAM = getattr(wintypes, "LPARAM", ctypes.c_ssize_t)
+LRESULT = getattr(wintypes, "LRESULT", ctypes.c_ssize_t)
+
+LPVOID = getattr(wintypes, "LPVOID", ctypes.c_void_p)
+LPCWSTR = getattr(wintypes, "LPCWSTR", ctypes.c_wchar_p)
+COLORREF = getattr(wintypes, "COLORREF", DWORD)
+ATOM = WORD
+
+
+class POINT(ctypes.Structure):
+    _fields_ = [
+        ("x", LONG),
+        ("y", LONG),
+    ]
+
+
+class RECT(ctypes.Structure):
+    _fields_ = [
+        ("left", LONG),
+        ("top", LONG),
+        ("right", LONG),
+        ("bottom", LONG),
+    ]
+
+
+class PAINTSTRUCT(ctypes.Structure):
+    _fields_ = [
+        ("hdc", HDC),
+        ("fErase", BOOL),
+        ("rcPaint", RECT),
+        ("fRestore", BOOL),
+        ("fIncUpdate", BOOL),
+        ("rgbReserved", BYTE * 32),
+    ]
+
+
+class MSG(ctypes.Structure):
+    _fields_ = [
+        ("hwnd", HWND),
+        ("message", UINT),
+        ("wParam", WPARAM),
+        ("lParam", LPARAM),
+        ("time", DWORD),
+        ("pt", POINT),
+        ("lPrivate", DWORD),
+    ]
+
+
+WNDPROC = ctypes.WINFUNCTYPE(LRESULT, HWND, UINT, WPARAM, LPARAM)
+
+
+class WNDCLASS(ctypes.Structure):
+    _fields_ = [
+        ("style", UINT),
+        ("lpfnWndProc", WNDPROC),
+        ("cbClsExtra", INT),
+        ("cbWndExtra", INT),
+        ("hInstance", HINSTANCE),
+        ("hIcon", HICON),
+        ("hCursor", HCURSOR),
+        ("hbrBackground", HBRUSH),
+        ("lpszMenuName", LPCWSTR),
+        ("lpszClassName", LPCWSTR),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Deklarasi argtypes dan restype WinAPI
+# ---------------------------------------------------------------------------
+
+kernel32.GetModuleHandleW.argtypes = [LPCWSTR]
+kernel32.GetModuleHandleW.restype = HMODULE
+
+user32.RegisterClassW.argtypes = [ctypes.POINTER(WNDCLASS)]
+user32.RegisterClassW.restype = ATOM
+
+user32.CreateWindowExW.argtypes = [
+    DWORD,
+    LPCWSTR,
+    LPCWSTR,
+    DWORD,
+    INT,
+    INT,
+    INT,
+    INT,
+    HWND,
+    HMENU,
+    HINSTANCE,
+    LPVOID,
+]
+user32.CreateWindowExW.restype = HWND
+
+user32.ShowWindow.argtypes = [HWND, INT]
+user32.ShowWindow.restype = BOOL
+
+user32.UpdateWindow.argtypes = [HWND]
+user32.UpdateWindow.restype = BOOL
+
+user32.GetMessageW.argtypes = [ctypes.POINTER(MSG), HWND, UINT, UINT]
+user32.GetMessageW.restype = BOOL
+
+user32.TranslateMessage.argtypes = [ctypes.POINTER(MSG)]
+user32.TranslateMessage.restype = BOOL
+
+user32.DispatchMessageW.argtypes = [ctypes.POINTER(MSG)]
+user32.DispatchMessageW.restype = LRESULT
+
+user32.DefWindowProcW.argtypes = [HWND, UINT, WPARAM, LPARAM]
+user32.DefWindowProcW.restype = LRESULT
+
+user32.BeginPaint.argtypes = [HWND, ctypes.POINTER(PAINTSTRUCT)]
+user32.BeginPaint.restype = HDC
+
+user32.EndPaint.argtypes = [HWND, ctypes.POINTER(PAINTSTRUCT)]
+user32.EndPaint.restype = BOOL
+
+user32.InvalidateRect.argtypes = [HWND, ctypes.POINTER(RECT), BOOL]
+user32.InvalidateRect.restype = BOOL
+
+user32.GetClientRect.argtypes = [HWND, ctypes.POINTER(RECT)]
+user32.GetClientRect.restype = BOOL
+
+user32.LoadCursorW.argtypes = [HINSTANCE, LPCWSTR]
+user32.LoadCursorW.restype = HCURSOR
+
+user32.DestroyWindow.argtypes = [HWND]
+user32.DestroyWindow.restype = BOOL
+
+user32.PostQuitMessage.argtypes = [INT]
+user32.PostQuitMessage.restype = None
+
+user32.MessageBoxW.argtypes = [HWND, LPCWSTR, LPCWSTR, UINT]
+user32.MessageBoxW.restype = INT
+
+gdi32.CreateSolidBrush.argtypes = [COLORREF]
+gdi32.CreateSolidBrush.restype = HBRUSH
+
+gdi32.SelectObject.argtypes = [HDC, HGDIOBJ]
+gdi32.SelectObject.restype = HGDIOBJ
+
+gdi32.DeleteObject.argtypes = [HGDIOBJ]
+gdi32.DeleteObject.restype = BOOL
+
+gdi32.GetStockObject.argtypes = [INT]
+gdi32.GetStockObject.restype = HGDIOBJ
+
+gdi32.Rectangle.argtypes = [HDC, INT, INT, INT, INT]
+gdi32.Rectangle.restype = BOOL
+
+gdi32.TextOutW.argtypes = [HDC, INT, INT, LPCWSTR, INT]
+gdi32.TextOutW.restype = BOOL
+
+gdi32.SetTextColor.argtypes = [HDC, COLORREF]
+gdi32.SetTextColor.restype = COLORREF
+
+gdi32.SetBkMode.argtypes = [HDC, INT]
+gdi32.SetBkMode.restype = INT
+
+
+# ---------------------------------------------------------------------------
+# State aplikasi dan warna
+# ---------------------------------------------------------------------------
+
+MENU_ITEMS = ("Calculator", "Notes", "Settings", "About", "Exit")
+
+menu_open = False
+hover_index = -1
+start_hover = False
+main_hwnd = None
+
+BACKGROUND = (24, 27, 34)
+TASKBAR = (38, 42, 51)
+START_BLUE = (0, 120, 215)
+START_BLUE_HOVER = (25, 142, 232)
+PANEL = (31, 35, 43)
+HEADER_BLUE = (0, 103, 184)
+ITEM = (42, 47, 57)
+ITEM_HOVER = (61, 68, 82)
+TEXT_PRIMARY = (245, 247, 250)
+TEXT_SECONDARY = (180, 187, 199)
+ICON_BLUE = (58, 151, 240)
+EXIT_RED = (195, 62, 70)
+
+
+# ---------------------------------------------------------------------------
+# Fungsi helper
+# ---------------------------------------------------------------------------
+
+def rgb(r, g, b):
+    """Mengubah RGB menjadi COLORREF Windows (format 0x00BBGGRR)."""
+    return r | (g << 8) | (b << 16)
+
+
+def get_x_lparam(lparam):
+    """Mengambil koordinat X bertanda dari LPARAM."""
+    return ctypes.c_short(int(lparam) & 0xFFFF).value
+
+
+def get_y_lparam(lparam):
+    """Mengambil koordinat Y bertanda dari LPARAM."""
+    return ctypes.c_short((int(lparam) >> 16) & 0xFFFF).value
+
+
+def draw_rect(hdc, left, top, right, bottom, color):
+    """Menggambar kotak berwarna solid menggunakan brush dan Rectangle GDI."""
+    brush = gdi32.CreateSolidBrush(rgb(*color))
+    if not brush:
+        return
+
+    null_pen = gdi32.GetStockObject(NULL_PEN)
+    old_brush = gdi32.SelectObject(hdc, brush)
+    old_pen = gdi32.SelectObject(hdc, null_pen)
+
+    gdi32.Rectangle(hdc, left, top, right, bottom)
+
+    if old_pen:
+        gdi32.SelectObject(hdc, old_pen)
+    if old_brush:
+        gdi32.SelectObject(hdc, old_brush)
+    gdi32.DeleteObject(brush)
+
+
+def draw_text(hdc, text, x, y, color):
+    """Menggambar teks transparan langsung ke device context."""
+    gdi32.SetBkMode(hdc, TRANSPARENT)
+    gdi32.SetTextColor(hdc, rgb(*color))
+    gdi32.TextOutW(hdc, x, y, text, len(text))
+
+
+def show_message(title, message):
+    """Menampilkan dialog native Windows untuk fitur menu sederhana."""
+    user32.MessageBoxW(main_hwnd, message, title, MB_OK | MB_ICONINFORMATION)
+
+
+def point_in_rect(x, y, rect):
+    left, top, right, bottom = rect
+    return left <= x < right and top <= y < bottom
+
+
+def get_client_size(hwnd):
+    rect = RECT()
+    if not user32.GetClientRect(hwnd, ctypes.byref(rect)):
+        return 900, 600
+    return max(1, rect.right - rect.left), max(1, rect.bottom - rect.top)
+
+
+def get_layout(width, height):
+    """Membuat semua posisi gambar dan hit-test dari satu sumber data."""
+    taskbar_top = max(0, height - 58)
+    start_rect = (12, taskbar_top + 10, 132, height - 10)
+
+    panel_left = 12
+    panel_right = min(width - 12, 322)
+    panel_bottom = max(0, taskbar_top - 8)
+    panel_top = max(12, panel_bottom - 342)
+    panel_rect = (panel_left, panel_top, panel_right, panel_bottom)
+
+    item_left = panel_left + 10
+    item_right = panel_right - 10
+    first_item_top = panel_top + 72
+    item_rects = []
+    for index in range(len(MENU_ITEMS)):
+        top = first_item_top + index * 52
+        item_rects.append((item_left, top, item_right, top + 44))
+
+    return {
+        "taskbar_top": taskbar_top,
+        "start_rect": start_rect,
+        "panel_rect": panel_rect,
+        "item_rects": item_rects,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Proses menggambar seluruh antarmuka
+# ---------------------------------------------------------------------------
+
+def draw_ui(hwnd, hdc):
+    width, height = get_client_size(hwnd)
+    layout = get_layout(width, height)
+
+    default_font = gdi32.GetStockObject(DEFAULT_GUI_FONT)
+    old_font = gdi32.SelectObject(hdc, default_font)
+
+    # Desktop sederhana.
+    draw_rect(hdc, 0, 0, width, height, BACKGROUND)
+    draw_text(hdc, "GRAFIKA DESKTOP", 34, 28, TEXT_PRIMARY)
+    draw_text(hdc, "Python 3 + WinAPI + GDI", 34, 52, TEXT_SECONDARY)
+
+    desktop_tiles = (
+        (34, 96, "PROJECT"),
+        (34, 176, "FILES"),
+        (34, 256, "SYSTEM"),
+    )
+    for tile_x, tile_y, label in desktop_tiles:
+        draw_rect(hdc, tile_x, tile_y, tile_x + 48, tile_y + 48, (47, 53, 64))
+        draw_rect(hdc, tile_x + 12, tile_y + 12, tile_x + 36, tile_y + 36, ICON_BLUE)
+        draw_text(hdc, label, tile_x + 60, tile_y + 16, TEXT_SECONDARY)
+
+    # Taskbar dan tombol START.
+    taskbar_top = layout["taskbar_top"]
+    draw_rect(hdc, 0, taskbar_top, width, height, TASKBAR)
+
+    start_rect = layout["start_rect"]
+    start_color = START_BLUE_HOVER if start_hover else START_BLUE
+    draw_rect(hdc, *start_rect, start_color)
+    draw_rect(
+        hdc,
+        start_rect[0] + 14,
+        start_rect[1] + 9,
+        start_rect[0] + 29,
+        start_rect[1] + 24,
+        TEXT_PRIMARY,
+    )
+    draw_text(hdc, "START", start_rect[0] + 40, start_rect[1] + 10, TEXT_PRIMARY)
+
+    taskbar_label_x = max(150, width - 190)
+    draw_text(hdc, "WINAPI / GDI", taskbar_label_x, taskbar_top + 20, TEXT_SECONDARY)
+
+    if menu_open:
+        panel_rect = layout["panel_rect"]
+        draw_rect(hdc, *panel_rect, PANEL)
+
+        header_bottom = panel_rect[1] + 62
+        draw_rect(
+            hdc,
+            panel_rect[0],
+            panel_rect[1],
+            panel_rect[2],
+            header_bottom,
+            HEADER_BLUE,
+        )
+        draw_text(
+            hdc,
+            "START MENU",
+            panel_rect[0] + 20,
+            panel_rect[1] + 14,
+            TEXT_PRIMARY,
+        )
+        draw_text(
+            hdc,
+            "Grafika Computer Final Project",
+            panel_rect[0] + 20,
+            panel_rect[1] + 36,
+            (218, 234, 248),
+        )
+
+        for index, (label, item_rect) in enumerate(
+            zip(MENU_ITEMS, layout["item_rects"])
+        ):
+            item_color = ITEM_HOVER if index == hover_index else ITEM
+            draw_rect(hdc, *item_rect, item_color)
+
+            icon_color = EXIT_RED if label == "Exit" else ICON_BLUE
+            icon_left = item_rect[0] + 12
+            icon_top = item_rect[1] + 10
+            draw_rect(
+                hdc,
+                icon_left,
+                icon_top,
+                icon_left + 24,
+                icon_top + 24,
+                icon_color,
+            )
+            draw_text(
+                hdc,
+                label,
+                item_rect[0] + 52,
+                item_rect[1] + 13,
+                TEXT_PRIMARY,
+            )
+
+    if old_font:
+        gdi32.SelectObject(hdc, old_font)
+
+
+def run_menu_action(index):
+    if index == 0:
+        show_message(
+            "Calculator",
+            "Kalkulator sederhana\n\nContoh perhitungan:\n125 + 75 = 200",
+        )
+    elif index == 1:
+        show_message(
+            "Notes",
+            "Notes sederhana\n\n- Final Project Grafika Komputer\n"
+            "- GUI digambar manual dengan GDI",
+        )
+    elif index == 2:
+        show_message(
+            "Settings",
+            "Tema: Dark Modern\nResolusi awal: 900 x 600\nRenderer: Windows GDI",
+        )
+    elif index == 3:
+        show_message(
+            "About",
+            "Grafika Start Menu\n\nDibuat dengan Python 3, ctypes, "
+            "WinAPI, dan GDI.\nTanpa library GUI eksternal.",
+        )
+    elif index == 4:
+        user32.DestroyWindow(main_hwnd)
+
+
+# ---------------------------------------------------------------------------
+# Window procedure
+# ---------------------------------------------------------------------------
+
+def wnd_proc(hwnd, msg, wparam, lparam):
+    global menu_open, hover_index, start_hover
+
+    if msg == WM_PAINT:
+        paint = PAINTSTRUCT()
+        hdc = user32.BeginPaint(hwnd, ctypes.byref(paint))
+        if hdc:
+            draw_ui(hwnd, hdc)
+        user32.EndPaint(hwnd, ctypes.byref(paint))
+        return 0
+
+    if msg == WM_ERASEBKGND:
+        # Seluruh client area digambar ulang pada WM_PAINT.
+        return 1
+
+    if msg == WM_MOUSEMOVE:
+        x = get_x_lparam(lparam)
+        y = get_y_lparam(lparam)
+        width, height = get_client_size(hwnd)
+        layout = get_layout(width, height)
+
+        new_start_hover = point_in_rect(x, y, layout["start_rect"])
+        new_hover_index = -1
+        if menu_open:
+            for index, item_rect in enumerate(layout["item_rects"]):
+                if point_in_rect(x, y, item_rect):
+                    new_hover_index = index
+                    break
+
+        if new_start_hover != start_hover or new_hover_index != hover_index:
+            start_hover = new_start_hover
+            hover_index = new_hover_index
+            user32.InvalidateRect(hwnd, None, False)
+        return 0
+
+    if msg == WM_LBUTTONDOWN:
+        x = get_x_lparam(lparam)
+        y = get_y_lparam(lparam)
+        width, height = get_client_size(hwnd)
+        layout = get_layout(width, height)
+
+        if point_in_rect(x, y, layout["start_rect"]):
+            menu_open = not menu_open
+            hover_index = -1
+            user32.InvalidateRect(hwnd, None, False)
+            return 0
+
+        if menu_open:
+            clicked_index = -1
+            for index, item_rect in enumerate(layout["item_rects"]):
+                if point_in_rect(x, y, item_rect):
+                    clicked_index = index
+                    break
+
+            if clicked_index >= 0:
+                menu_open = False
+                hover_index = -1
+                user32.InvalidateRect(hwnd, None, False)
+                user32.UpdateWindow(hwnd)
+                run_menu_action(clicked_index)
+                return 0
+
+            if not point_in_rect(x, y, layout["panel_rect"]):
+                menu_open = False
+                hover_index = -1
+                user32.InvalidateRect(hwnd, None, False)
+                return 0
+
+    if msg == WM_DESTROY:
+        user32.PostQuitMessage(0)
+        return 0
+
+    return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
+
+
+# Callback harus disimpan sebagai variabel global agar tidak dibuang garbage collector.
+wnd_proc_callback = WNDPROC(wnd_proc)
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+def main():
+    global main_hwnd
+
+    instance = kernel32.GetModuleHandleW(None)
+    if not instance:
+        raise ctypes.WinError(ctypes.get_last_error())
+
+    class_name = "GrafikaStartMenuWindow"
+    cursor_resource = ctypes.cast(ctypes.c_void_p(IDC_ARROW), LPCWSTR)
+
+    window_class = WNDCLASS()
+    window_class.style = CS_HREDRAW | CS_VREDRAW
+    window_class.lpfnWndProc = wnd_proc_callback
+    window_class.cbClsExtra = 0
+    window_class.cbWndExtra = 0
+    window_class.hInstance = instance
+    window_class.hIcon = None
+    window_class.hCursor = user32.LoadCursorW(None, cursor_resource)
+    window_class.hbrBackground = HBRUSH(COLOR_WINDOW + 1)
+    window_class.lpszMenuName = None
+    window_class.lpszClassName = class_name
+
+    atom = user32.RegisterClassW(ctypes.byref(window_class))
+    if not atom:
+        raise ctypes.WinError(ctypes.get_last_error())
+
+    main_hwnd = user32.CreateWindowExW(
+        0,
+        class_name,
+        "Grafika Start Menu - Python WinAPI/GDI",
+        WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        900,
+        600,
+        None,
+        None,
+        instance,
+        None,
+    )
+    if not main_hwnd:
+        raise ctypes.WinError(ctypes.get_last_error())
+
+    user32.ShowWindow(main_hwnd, SW_SHOW)
+    user32.UpdateWindow(main_hwnd)
+
+    message = MSG()
+    while True:
+        result = user32.GetMessageW(ctypes.byref(message), None, 0, 0)
+        if result == -1:
+            raise ctypes.WinError(ctypes.get_last_error())
+        if result == 0:
+            break
+        user32.TranslateMessage(ctypes.byref(message))
+        user32.DispatchMessageW(ctypes.byref(message))
+
+    return int(message.wParam)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,34 @@
+# Cache dan bytecode Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Hasil build dan distribusi
+build/
+dist/
+*.egg-info/
+
+# Test, coverage, dan type checker
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editor dan IDE
+.idea/
+.vscode/
+*.code-workspace
+
+# File sistem dan sementara
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.log
+*.tmp
+~$*

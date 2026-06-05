@@ -1,2 +1,20 @@
-# Auto detect text files and perform LF normalization
+# Normalisasi line ending agar konsisten di GitHub dan lintas editor.
 * text=auto
+
+*.py   text eol=lf
+*.md   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+.gitattributes text eol=lf
+.gitignore     text eol=lf
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# File biner tidak perlu dinormalisasi.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
