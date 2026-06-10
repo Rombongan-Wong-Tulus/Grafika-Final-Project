@@ -22,6 +22,13 @@ WM_PAINT = 0x000F
 WM_ERASEBKGND = 0x0014
 WM_MOUSEMOVE = 0x0200
 WM_LBUTTONDOWN = 0x0201
+WM_KEYDOWN = 0x0100
+WM_CHAR = 0x0102
+WM_KEYUP = 0x0101
+
+VK_BACK = 0x08
+VK_RETURN = 0x0D
+VK_ESCAPE = 0x1B
 
 CS_VREDRAW = 0x0001
 CS_HREDRAW = 0x0002
@@ -224,17 +231,29 @@ gdi32.SetTextColor.restype = COLORREF
 gdi32.SetBkMode.argtypes = [HDC, INT]
 gdi32.SetBkMode.restype = INT
 
+gdi32.GetTextExtentPoint32W.argtypes = [HDC, LPCWSTR, INT, ctypes.POINTER(POINT)]
+gdi32.GetTextExtentPoint32W.restype = BOOL
+
+user32.GetKeyState.argtypes = [INT]
+user32.GetKeyState.restype = INT
+
+user32.GetAsyncKeyState.argtypes = [INT]
+user32.GetAsyncKeyState.restype = INT
+
 
 # ---------------------------------------------------------------------------
 # State aplikasi dan warna
 # ---------------------------------------------------------------------------
 
-MENU_ITEMS = ("Calculator", "Notes", "Settings", "About", "Exit")
+MENU_ITEMS = ("File", "Calculator", "Notes", "Settings", "About", "Exit")
 
 menu_open = False
 hover_index = -1
 start_hover = False
 main_hwnd = None
+dialog_open = False
+dialog_input = ""
+dialog_confirmed = False
 
 BACKGROUND = (24, 27, 34)
 TASKBAR = (38, 42, 51)
@@ -300,6 +319,15 @@ def show_message(title, message):
     user32.MessageBoxW(main_hwnd, message, title, MB_OK | MB_ICONINFORMATION)
 
 
+def open_file_dialog():
+    """Buka input dialog untuk nama file (drawn with GDI)."""
+    global dialog_open, dialog_input, dialog_confirmed
+    dialog_open = True
+    dialog_input = ""
+    dialog_confirmed = False
+    user32.InvalidateRect(main_hwnd, None, False)
+
+
 def point_in_rect(x, y, rect):
     left, top, right, bottom = rect
     return left <= x < right and top <= y < bottom
@@ -320,7 +348,7 @@ def get_layout(width, height):
     panel_left = 12
     panel_right = min(width - 12, 322)
     panel_bottom = max(0, taskbar_top - 8)
-    panel_top = max(12, panel_bottom - 342)
+    panel_top = max(12, panel_bottom - 386)
     panel_rect = (panel_left, panel_top, panel_right, panel_bottom)
 
     item_left = panel_left + 10
@@ -337,6 +365,70 @@ def get_layout(width, height):
         "panel_rect": panel_rect,
         "item_rects": item_rects,
     }
+
+
+def get_input_dialog_layout(width, height):
+    """Posisi dialog input file yang centered di layar."""
+    dialog_width = 350
+    dialog_height = 200
+    dialog_left = (width - dialog_width) // 2
+    dialog_top = (height - dialog_height) // 2
+    dialog_right = dialog_left + dialog_width
+    dialog_bottom = dialog_top + dialog_height
+
+    label_y = dialog_top + 25
+    input_y = dialog_top + 50
+    input_height = 35
+    ok_btn_y = dialog_bottom - 50
+    input_x = dialog_left + 20
+    input_width = dialog_width - 40
+
+    ok_btn_left = dialog_left + 80
+    ok_btn_right = ok_btn_left + 70
+    cancel_btn_left = ok_btn_right + 20
+    cancel_btn_right = cancel_btn_left + 70
+
+    return {
+        "dialog": (dialog_left, dialog_top, dialog_right, dialog_bottom),
+        "label": (input_x, label_y),
+        "input": (input_x, input_y, input_x + input_width, input_y + input_height),
+        "ok_btn": (ok_btn_left, ok_btn_y, ok_btn_right, ok_btn_y + 35),
+        "cancel_btn": (cancel_btn_left, ok_btn_y, cancel_btn_right, ok_btn_y + 35),
+    }
+
+
+def draw_input_dialog(hdc, width, height):
+    """Menggambar dialog input file dengan GDI primitives."""
+    global dialog_input
+
+    layout = get_input_dialog_layout(width, height)
+    dialog_rect = layout["dialog"]
+    input_rect = layout["input"]
+    ok_rect = layout["ok_btn"]
+    cancel_rect = layout["cancel_btn"]
+
+    draw_rect(hdc, *dialog_rect, PANEL)
+
+    draw_rect(
+        hdc,
+        dialog_rect[0],
+        dialog_rect[1],
+        dialog_rect[2],
+        dialog_rect[1] + 60,
+        HEADER_BLUE,
+    )
+    draw_text(hdc, "Input File Name", dialog_rect[0] + 20, dialog_rect[1] + 10, TEXT_PRIMARY)
+    draw_text(hdc, "nama file:", dialog_rect[0] + 20, dialog_rect[1] + 32, (200, 200, 200))
+
+    draw_rect(hdc, *input_rect, (50, 50, 50))
+    draw_rect(hdc, input_rect[0] + 2, input_rect[1] + 2, input_rect[2] - 2, input_rect[3] - 2, (70, 70, 70))
+    draw_text(hdc, dialog_input + "_", input_rect[0] + 10, input_rect[1] + 8, TEXT_PRIMARY)
+
+    draw_rect(hdc, *ok_rect, START_BLUE)
+    draw_text(hdc, "OK", ok_rect[0] + 20, ok_rect[1] + 8, TEXT_PRIMARY)
+
+    draw_rect(hdc, *cancel_rect, (100, 100, 100))
+    draw_text(hdc, "Cancel", cancel_rect[0] + 10, cancel_rect[1] + 8, TEXT_PRIMARY)
 
 
 # ---------------------------------------------------------------------------
@@ -438,34 +530,39 @@ def draw_ui(hwnd, hdc):
                 TEXT_PRIMARY,
             )
 
+    if dialog_open:
+        draw_input_dialog(hdc, width, height)
+
     if old_font:
         gdi32.SelectObject(hdc, old_font)
 
 
 def run_menu_action(index):
     if index == 0:
+        open_file_dialog()
+    elif index == 1:
         show_message(
             "Calculator",
             "Kalkulator sederhana\n\nContoh perhitungan:\n125 + 75 = 200",
         )
-    elif index == 1:
+    elif index == 2:
         show_message(
             "Notes",
             "Notes sederhana\n\n- Final Project Grafika Komputer\n"
             "- GUI digambar manual dengan GDI",
         )
-    elif index == 2:
+    elif index == 3:
         show_message(
             "Settings",
             "Tema: Dark Modern\nResolusi awal: 900 x 600\nRenderer: Windows GDI",
         )
-    elif index == 3:
+    elif index == 4:
         show_message(
             "About",
             "Grafika Start Menu\n\nDibuat dengan Python 3, ctypes, "
             "WinAPI, dan GDI.\nTanpa library GUI eksternal.",
         )
-    elif index == 4:
+    elif index == 5:
         user32.DestroyWindow(main_hwnd)
 
 
@@ -474,7 +571,7 @@ def run_menu_action(index):
 # ---------------------------------------------------------------------------
 
 def wnd_proc(hwnd, msg, wparam, lparam):
-    global menu_open, hover_index, start_hover
+    global menu_open, hover_index, start_hover, dialog_open, dialog_input, dialog_confirmed
 
     if msg == WM_PAINT:
         paint = PAINTSTRUCT()
@@ -485,15 +582,50 @@ def wnd_proc(hwnd, msg, wparam, lparam):
         return 0
 
     if msg == WM_ERASEBKGND:
-        # Seluruh client area digambar ulang pada WM_PAINT.
         return 1
+
+    if msg == WM_KEYDOWN:
+        if dialog_open:
+            if wparam == VK_BACK:
+                if dialog_input:
+                    dialog_input = dialog_input[:-1]
+                user32.InvalidateRect(hwnd, None, False)
+                return 0
+            elif wparam == VK_RETURN:
+                if dialog_input:
+                    dialog_confirmed = True
+                    dialog_open = False
+                    show_message(
+                        "File Berhasil Dibuat",
+                        f"File '{dialog_input}' telah dibuat.\n\n"
+                        "File ini adalah demo dari input field.\n"
+                        "Gunakan untuk project Grafika Komputer Anda.",
+                    )
+                user32.InvalidateRect(hwnd, None, False)
+                return 0
+            elif wparam == VK_ESCAPE:
+                dialog_open = False
+                dialog_input = ""
+                user32.InvalidateRect(hwnd, None, False)
+                return 0
+
+    if msg == WM_CHAR:
+        if dialog_open:
+            if 32 <= wparam <= 126:
+                if len(dialog_input) < 50:
+                    dialog_input += chr(wparam)
+                user32.InvalidateRect(hwnd, None, False)
+            return 0
 
     if msg == WM_MOUSEMOVE:
         x = get_x_lparam(lparam)
         y = get_y_lparam(lparam)
         width, height = get_client_size(hwnd)
-        layout = get_layout(width, height)
 
+        if dialog_open:
+            return 0
+
+        layout = get_layout(width, height)
         new_start_hover = point_in_rect(x, y, layout["start_rect"])
         new_hover_index = -1
         if menu_open:
@@ -512,6 +644,26 @@ def wnd_proc(hwnd, msg, wparam, lparam):
         x = get_x_lparam(lparam)
         y = get_y_lparam(lparam)
         width, height = get_client_size(hwnd)
+
+        if dialog_open:
+            dlg_layout = get_input_dialog_layout(width, height)
+            if point_in_rect(x, y, dlg_layout["ok_btn"]):
+                if dialog_input:
+                    dialog_confirmed = True
+                    dialog_open = False
+                    show_message(
+                        "File Berhasil Dibuat",
+                        f"File '{dialog_input}' telah dibuat.\n\n"
+                        "File ini adalah demo dari input field.\n"
+                        "Gunakan untuk project Grafika Komputer Anda.",
+                    )
+                    dialog_input = ""
+            elif point_in_rect(x, y, dlg_layout["cancel_btn"]):
+                dialog_open = False
+                dialog_input = ""
+            user32.InvalidateRect(hwnd, None, False)
+            return 0
+
         layout = get_layout(width, height)
 
         if point_in_rect(x, y, layout["start_rect"]):
