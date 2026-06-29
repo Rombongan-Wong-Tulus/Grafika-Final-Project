@@ -45,8 +45,7 @@ TRANSPARENT = 1
 NULL_PEN = 8
 DEFAULT_GUI_FONT = 17
 
-MB_OK = 0x00000000
-MB_ICONINFORMATION = 0x00000040
+# MB_OK dan MB_ICONINFORMATION dihapus — tidak lagi digunakan
 
 
 # ---------------------------------------------------------------------------
@@ -255,6 +254,11 @@ dialog_open = False
 dialog_input = ""
 dialog_confirmed = False
 
+# State untuk custom info/message dialog (pengganti MessageBoxW)
+msg_dialog_open = False
+msg_dialog_title = ""
+msg_dialog_lines = []  # list of string, hasil split '\n'
+
 BACKGROUND = (24, 27, 34)
 TASKBAR = (38, 42, 51)
 START_BLUE = (0, 120, 215)
@@ -315,8 +319,12 @@ def draw_text(hdc, text, x, y, color):
 
 
 def show_message(title, message):
-    """Menampilkan dialog native Windows untuk fitur menu sederhana."""
-    user32.MessageBoxW(main_hwnd, message, title, MB_OK | MB_ICONINFORMATION)
+    """Menampilkan custom info dialog yang digambar manual dengan GDI."""
+    global msg_dialog_open, msg_dialog_title, msg_dialog_lines
+    msg_dialog_title = title
+    msg_dialog_lines = message.split("\n")
+    msg_dialog_open = True
+    user32.InvalidateRect(main_hwnd, None, False)
 
 
 def open_file_dialog():
@@ -432,6 +440,99 @@ def draw_input_dialog(hdc, width, height):
 
 
 # ---------------------------------------------------------------------------
+# Custom info/message dialog (pengganti MessageBoxW)
+# ---------------------------------------------------------------------------
+
+
+def get_msg_dialog_layout(width, height, line_count):
+    """Hitung posisi custom message dialog berdasarkan jumlah baris teks."""
+    line_h = 20
+    padding_v = 30
+    header_h = 52
+    btn_h = 36
+    btn_margin = 16
+
+    content_h = max(line_count, 1) * line_h + padding_v * 2
+    dialog_h = header_h + content_h + btn_h + btn_margin * 2
+    dialog_w = 420
+
+    dlg_left = (width - dialog_w) // 2
+    dlg_top = (height - dialog_h) // 2
+    dlg_right = dlg_left + dialog_w
+    dlg_bottom = dlg_top + dialog_h
+
+    first_line_y = dlg_top + header_h + padding_v
+
+    btn_w = 90
+    btn_left = dlg_left + (dialog_w - btn_w) // 2
+    btn_top = dlg_bottom - btn_margin - btn_h
+    btn_right = btn_left + btn_w
+    btn_bottom = btn_top + btn_h
+
+    return {
+        "dialog": (dlg_left, dlg_top, dlg_right, dlg_bottom),
+        "header": (dlg_left, dlg_top, dlg_right, dlg_top + header_h),
+        "first_line_y": first_line_y,
+        "line_h": line_h,
+        "text_x": dlg_left + 24,
+        "ok_btn": (btn_left, btn_top, btn_right, btn_bottom),
+    }
+
+
+def draw_msg_dialog(hdc, width, height):
+    """Menggambar custom info/message dialog dengan GDI primitives."""
+    global msg_dialog_title, msg_dialog_lines
+
+    layout = get_msg_dialog_layout(width, height, len(msg_dialog_lines))
+    dlg = layout["dialog"]
+    hdr = layout["header"]
+    ok = layout["ok_btn"]
+    text_x = layout["text_x"]
+    line_h = layout["line_h"]
+    first_y = layout["first_line_y"]
+
+    # Overlay gelap semi-transparan (solid dark layer)
+    draw_rect(hdc, 0, 0, width, height, (10, 12, 18))
+
+    # Bodi dialog
+    draw_rect(hdc, *dlg, PANEL)
+
+    # Garis aksen kiri (dekorasi)
+    draw_rect(hdc, dlg[0], dlg[1], dlg[0] + 4, dlg[3], ICON_BLUE)
+
+    # Header
+    draw_rect(hdc, *hdr, HEADER_BLUE)
+
+    # Ikon info di header (kotak kecil berwarna)
+    ico_x = hdr[0] + 16
+    ico_y = hdr[1] + (hdr[3] - hdr[1] - 20) // 2
+    draw_rect(hdc, ico_x, ico_y, ico_x + 20, ico_y + 20, TEXT_PRIMARY)
+    draw_rect(hdc, ico_x + 7, ico_y + 7, ico_x + 13, ico_y + 13, HEADER_BLUE)
+
+    # Judul dialog di header
+    draw_text(hdc, msg_dialog_title, hdr[0] + 48, hdr[1] + 16, TEXT_PRIMARY)
+
+    # Garis pemisah tipis di bawah header
+    draw_rect(hdc, dlg[0] + 4, hdr[3], dlg[2], hdr[3] + 2, ICON_BLUE)
+
+    # Baris-baris teks konten
+    for i, line in enumerate(msg_dialog_lines):
+        y = first_y + i * line_h
+        if line.strip():
+            draw_text(hdc, line, text_x, y, TEXT_SECONDARY)
+
+    # Separator atas tombol OK
+    draw_rect(hdc, dlg[0] + 4, ok[1] - 12, dlg[2], ok[1] - 10, (50, 56, 68))
+
+    # Tombol OK
+    draw_rect(hdc, *ok, START_BLUE)
+    # Teks OK di tengah tombol
+    ok_mid_x = ok[0] + (ok[2] - ok[0] - 16) // 2
+    ok_mid_y = ok[1] + (ok[3] - ok[1] - 16) // 2
+    draw_text(hdc, "OK", ok_mid_x, ok_mid_y, TEXT_PRIMARY)
+
+
+# ---------------------------------------------------------------------------
 # Proses menggambar seluruh antarmuka
 # ---------------------------------------------------------------------------
 
@@ -533,6 +634,9 @@ def draw_ui(hwnd, hdc):
     if dialog_open:
         draw_input_dialog(hdc, width, height)
 
+    if msg_dialog_open:
+        draw_msg_dialog(hdc, width, height)
+
     if old_font:
         gdi32.SelectObject(hdc, old_font)
 
@@ -572,6 +676,7 @@ def run_menu_action(index):
 
 def wnd_proc(hwnd, msg, wparam, lparam):
     global menu_open, hover_index, start_hover, dialog_open, dialog_input, dialog_confirmed
+    global msg_dialog_open, msg_dialog_title, msg_dialog_lines
 
     if msg == WM_PAINT:
         paint = PAINTSTRUCT()
@@ -585,6 +690,15 @@ def wnd_proc(hwnd, msg, wparam, lparam):
         return 1
 
     if msg == WM_KEYDOWN:
+        # Prioritas 1: tutup msg_dialog (info dialog) dengan Enter atau Escape
+        if msg_dialog_open:
+            if wparam in (VK_RETURN, VK_ESCAPE):
+                msg_dialog_open = False
+                msg_dialog_title = ""
+                msg_dialog_lines = []
+                user32.InvalidateRect(hwnd, None, False)
+            return 0
+
         if dialog_open:
             if wparam == VK_BACK:
                 if dialog_input:
@@ -622,6 +736,9 @@ def wnd_proc(hwnd, msg, wparam, lparam):
         y = get_y_lparam(lparam)
         width, height = get_client_size(hwnd)
 
+        if msg_dialog_open:
+            return 0
+
         if dialog_open:
             return 0
 
@@ -644,6 +761,16 @@ def wnd_proc(hwnd, msg, wparam, lparam):
         x = get_x_lparam(lparam)
         y = get_y_lparam(lparam)
         width, height = get_client_size(hwnd)
+
+        # Prioritas 1: tangani klik di msg_dialog (info dialog)
+        if msg_dialog_open:
+            msg_layout = get_msg_dialog_layout(width, height, len(msg_dialog_lines))
+            if point_in_rect(x, y, msg_layout["ok_btn"]):
+                msg_dialog_open = False
+                msg_dialog_title = ""
+                msg_dialog_lines = []
+                user32.InvalidateRect(hwnd, None, False)
+            return 0
 
         if dialog_open:
             dlg_layout = get_input_dialog_layout(width, height)
