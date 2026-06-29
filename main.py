@@ -249,6 +249,7 @@ MENU_ITEMS = ("File", "Calculator", "Notes", "Settings", "About", "Exit")
 menu_open = False
 hover_index = -1
 start_hover = False
+desktop_hover_index = -1
 main_hwnd = None
 dialog_open = False
 dialog_input = ""
@@ -367,11 +368,19 @@ def get_layout(width, height):
         top = first_item_top + index * 52
         item_rects.append((item_left, top, item_right, top + 44))
 
+    desktop_rects = []
+    desktop_labels = ("PROJECT", "FILES", "SYSTEM")
+    for i in range(len(desktop_labels)):
+        top = 96 + i * 80
+        desktop_rects.append((24, top - 8, 180, top + 56))
+
     return {
         "taskbar_top": taskbar_top,
         "start_rect": start_rect,
         "panel_rect": panel_rect,
         "item_rects": item_rects,
+        "desktop_rects": desktop_rects,
+        "desktop_labels": desktop_labels,
     }
 
 
@@ -548,15 +557,15 @@ def draw_ui(hwnd, hdc):
     draw_text(hdc, "GRAFIKA DESKTOP", 34, 28, TEXT_PRIMARY)
     draw_text(hdc, "Python 3 + WinAPI + GDI", 34, 52, TEXT_SECONDARY)
 
-    desktop_tiles = (
-        (34, 96, "PROJECT"),
-        (34, 176, "FILES"),
-        (34, 256, "SYSTEM"),
-    )
-    for tile_x, tile_y, label in desktop_tiles:
+    for index, (rect, label) in enumerate(zip(layout["desktop_rects"], layout["desktop_labels"])):
+        if index == desktop_hover_index:
+            draw_rect(hdc, *rect, (35, 40, 50))
+            
+        tile_x = 34
+        tile_y = 96 + index * 80
         draw_rect(hdc, tile_x, tile_y, tile_x + 48, tile_y + 48, (47, 53, 64))
         draw_rect(hdc, tile_x + 12, tile_y + 12, tile_x + 36, tile_y + 36, ICON_BLUE)
-        draw_text(hdc, label, tile_x + 60, tile_y + 16, TEXT_SECONDARY)
+        draw_text(hdc, label, tile_x + 60, tile_y + 16, TEXT_PRIMARY if index == desktop_hover_index else TEXT_SECONDARY)
 
     # Taskbar dan tombol START.
     taskbar_top = layout["taskbar_top"]
@@ -675,7 +684,7 @@ def run_menu_action(index):
 # ---------------------------------------------------------------------------
 
 def wnd_proc(hwnd, msg, wparam, lparam):
-    global menu_open, hover_index, start_hover, dialog_open, dialog_input, dialog_confirmed
+    global menu_open, hover_index, start_hover, desktop_hover_index, dialog_open, dialog_input, dialog_confirmed
     global msg_dialog_open, msg_dialog_title, msg_dialog_lines
 
     if msg == WM_PAINT:
@@ -751,9 +760,17 @@ def wnd_proc(hwnd, msg, wparam, lparam):
                     new_hover_index = index
                     break
 
-        if new_start_hover != start_hover or new_hover_index != hover_index:
+        new_desktop_hover_index = -1
+        if not menu_open and not dialog_open and not msg_dialog_open:
+            for index, rect in enumerate(layout["desktop_rects"]):
+                if point_in_rect(x, y, rect):
+                    new_desktop_hover_index = index
+                    break
+
+        if new_start_hover != start_hover or new_hover_index != hover_index or new_desktop_hover_index != desktop_hover_index:
             start_hover = new_start_hover
             hover_index = new_hover_index
+            desktop_hover_index = new_desktop_hover_index
             user32.InvalidateRect(hwnd, None, False)
         return 0
 
@@ -819,6 +836,16 @@ def wnd_proc(hwnd, msg, wparam, lparam):
                 hover_index = -1
                 user32.InvalidateRect(hwnd, None, False)
                 return 0
+
+        if not menu_open:
+            for index, rect in enumerate(layout["desktop_rects"]):
+                if point_in_rect(x, y, rect):
+                    label = layout["desktop_labels"][index]
+                    show_message(
+                        f"Buka {label}",
+                        f"Modul '{label}' akan terbuka disini.\n(Fitur dummy interaktif dari desktop)"
+                    )
+                    return 0
 
     if msg == WM_DESTROY:
         user32.PostQuitMessage(0)
